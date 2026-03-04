@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ultimate Boss Runner - Tall & Moving Blocks</title>
+<style>
+html,body{margin:0;padding:0;overflow:hidden;background:black;font-family:Arial;touch-action:none;}
+canvas{display:block;}
+#ui{position:absolute;top:10px;left:10px;color:white;font-size:18px;font-weight:bold;z-index:10;}
+#eventText{position:absolute;top:35px;left:10px;color:yellow;font-size:16px;font-weight:bold;z-index:10;}
+#menuBtn{position:absolute;top:10px;left:10px;background:#111;color:white;border:2px solid white;padding:6px 10px;cursor:pointer;z-index:20;}
+#menu{position:absolute;top:0;left:0;width:250px;height:100%;background:#111;color:white;padding:20px;display:none;z-index:30;}
+.colorBtn{display:block;margin:8px 0;padding:6px;cursor:pointer;border:none;width:100%;}
+</style>
+</head>
+<body>
+<button id="menuBtn">☰</button>
+<div id="ui">Score: 0 | 💎 0</div>
+<div id="eventText">☀️ Day</div>
+<div id="menu">
+<h3>Color Shop</h3>
+<div id="colorList"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+let scene,camera,renderer,player;
+let obstacles=[],emeralds=[],fireballs=[],particles=[],ramps=[],movingBlocks=[];
+let sewerPit=null;
+let score=0;
+let emeraldCount=parseInt(localStorage.getItem("emeralds"))||0;
+let ownedColors=JSON.parse(localStorage.getItem("ownedColors"))||[0xff0000];
+let selectedColor=parseInt(localStorage.getItem("color"))||0xff0000;
+
+let baseSpeed=0.35;
+let speed=baseSpeed;
+let gravity=0.015;
+let velocityY=0;
+let isJumping=false;
+let laneIndex=1;
+const lanes=[-3,0,3];
+let targetX=0;
+
+let spawnTimer=0;
+let bossTimer=0;
+let bossActive=false;
+let currentBoss="day";
+
+let shake=0;
+
+const ui=document.getElementById("ui");
+const eventText=document.getElementById("eventText");
+const menu=document.getElementById("menu");
+const colorList=document.getElementById("colorList");
+
+const colors=[
+{hex:0xff0000,price:0},
+{hex:0x00ff00,price:20},
+{hex:0x0000ff,price:30},
+{hex:0xffff00,price:40},
+{hex:0xff00ff,price:50}
+];
+
+init();
+animate();
+buildShop();
+updateUI();
+
+function init(){
+scene=new THREE.Scene();
+resetWorld();
+
+camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+camera.position.set(0,5,10);
+
+renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+
+window.addEventListener("resize",()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+});
+
+scene.add(new THREE.DirectionalLight(0xffffff,1));
+scene.add(new THREE.AmbientLight(0x404040));
+
+createGround();
+
+player=new THREE.Mesh(
+new THREE.BoxGeometry(1,1,1),
+new THREE.MeshLambertMaterial({color:selectedColor})
+);
+player.position.y=0.5;
+scene.add(player);
+
+document.addEventListener("keydown",controls);
+addMobileControls();
+
+document.getElementById("menuBtn").onclick=()=>{
+menu.style.display=menu.style.display==="block"?"none":"block";
+};
+}
+
+function resetWorld(){
+speed=baseSpeed;
+gravity=0.015;
+scene.background=new THREE.Color(0x87CEEB);
+scene.fog=new THREE.Fog(0x87CEEB,10,250);
+eventText.innerText="☀️ Day";
+bossActive=false;
+currentBoss="day";
+shake=0;
+if(sewerPit){scene.remove(sewerPit); sewerPit=null;}
+particles.forEach(p=>scene.remove(p));
+fireballs.forEach(f=>scene.remove(f));
+ramps.forEach(r=>scene.remove(r));
+movingBlocks.forEach(m=>scene.remove(m));
+particles=[]; fireballs=[]; ramps=[]; movingBlocks=[];
+}
+
+function createGround(){
+for(let i=0;i<5;i++){
+let g=new THREE.Mesh(
+new THREE.PlaneGeometry(20,200),
+new THREE.MeshLambertMaterial({color:0x444444})
+);
+g.rotation.x=-Math.PI/2;
+g.position.z=-i*200;
+scene.add(g);
+}
+}
+
+function spawnObstacle(){
+let lane=Math.floor(Math.random()*3);
+let isFlying=Math.random()<0.3;
+
+let height=isFlying?5:1; // Very tall now
+let obs=new THREE.Mesh(
+new THREE.BoxGeometry(1,height,1),
+new THREE.MeshLambertMaterial({color:isFlying?0xff8800:0x111111})
+);
+obs.position.set(lanes[lane],height/2,-120);
+obs.userData.flying=isFlying;
+scene.add(obs);
+obstacles.push(obs);
+}
+
+function spawnMovingBlock(){
+if(Math.random()>0.02) return; // spawn rate
+let lane=Math.floor(Math.random()*3);
+let block=new THREE.Mesh(
+new THREE.BoxGeometry(1,2,1),
+new THREE.MeshLambertMaterial({color:0x00ff00})
+);
+block.position.set(lanes[lane],1,-120);
+block.userData.dirX=Math.random()*0.1-0.05;
+block.userData.dirZ=Math.random()*0.1-0.05;
+scene.add(block);
+movingBlocks.push(block);
+}
+
+function spawnEmerald(){
+if(Math.random()>0.15) return;
+let lane=Math.floor(Math.random()*3);
+let gem=new THREE.Mesh(
+new THREE.OctahedronGeometry(0.4),
+new THREE.MeshLambertMaterial({color:0x00ffff})
+);
+gem.position.set(lanes[lane],1,-120);
+scene.add(gem);
+emeralds.push(gem);
+}
+
+function spawnRamp(){
+if(Math.random()>0.01) return;
+let lane=Math.floor(Math.random()*3);
+let ramp=new THREE.Mesh(
+new THREE.BoxGeometry(2,0.1,10),
+new THREE.MeshLambertMaterial({color:0x888888})
+);
+ramp.position.set(lanes[lane],0.05,-120);
+scene.add(ramp);
+ramps.push(ramp);
+}
+
+function activateBoss(){
+resetWorld();
+bossActive=true;
+bossTimer=800;
+
+let bosses=["volcano","tsunami","thunder","gravity","blizzard","void","sewer"];
+currentBoss=bosses[Math.floor(Math.random()*bosses.length)];
+
+if(currentBoss==="volcano"){
+scene.background=new THREE.Color(0xaa2200);
+scene.fog=new THREE.Fog(0xaa2200,5,120);
+speed=0.6;
+eventText.innerText="🌋 Volcano";
+}
+if(currentBoss==="tsunami"){
+scene.background=new THREE.Color(0x0033aa);
+gravity=0.008;
+eventText.innerText="🌊 Tsunami";
+}
+if(currentBoss==="thunder"){
+scene.background=new THREE.Color(0x222222);
+scene.fog=new THREE.Fog(0x222222,5,80);
+eventText.innerText="⚡ Thunderstorm";
+}
+if(currentBoss==="gravity"){
+gravity=0.04;
+eventText.innerText="🪐 Heavy Gravity";
+}
+if(currentBoss==="blizzard"){
+speed=0.45;
+eventText.innerText="❄️ Blizzard";
+}
+if(currentBoss==="void"){
+speed=0.75;
+scene.background=new THREE.Color(0x220033);
+scene.fog=new THREE.Fog(0x220033,5,70);
+eventText.innerText="🌌 Void";
+}
+if(currentBoss==="sewer"){
+activateSewer();
+}
+}
+
+function activateSewer(){
+scene.background=new THREE.Color(0x002211);
+scene.fog=new THREE.Fog(0x002211,5,100);
+eventText.innerText="🕳 Sewer Zone";
+let lane=Math.floor(Math.random()*3);
+sewerPit=new THREE.Mesh(
+new THREE.BoxGeometry(2,0.1,20),
+new THREE.MeshLambertMaterial({color:0x000000})
+);
+sewerPit.position.set(lanes[lane],0.05,-80);
+sewerPit.userData.lane=lane;
+scene.add(sewerPit);
+}
+
+function controls(e){
+if(e.key==="ArrowLeft" && laneIndex>0){laneIndex--;targetX=lanes[laneIndex];}
+if(e.key==="ArrowRight" && laneIndex<2){laneIndex++;targetX=lanes[laneIndex];}
+if(e.key===" ") jump();
+}
+
+function addMobileControls(){
+let startX=0,startY=0;
+document.addEventListener("touchstart",e=>{
+startX=e.touches[0].clientX;
+startY=e.touches[0].clientY;
+});
+document.addEventListener("touchend",e=>{
+let dx=e.changedTouches[0].clientX-startX;
+let dy=e.changedTouches[0].clientY-startY;
+if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){
+if(dx>0 && laneIndex<2){laneIndex++;targetX=lanes[laneIndex];}
+if(dx<0 && laneIndex>0){laneIndex--;targetX=lanes[laneIndex];}
+}
+if(dy<-70) jump();
+});
+}
+
+function jump(){
+if(!isJumping){
+velocityY=0.4;
+isJumping=true;
+}
+}
+
+// Collision detection helper (considers height)
+function checkCollision(obj1,obj2){
+let dx=Math.abs(obj1.position.x-obj2.position.x);
+let dz=Math.abs(obj1.position.z-obj2.position.z);
+let w1=(obj1.geometry.parameters.width||1)/2;
+let h1=(obj1.geometry.parameters.height||1)/2;
+let d1=(obj1.geometry.parameters.depth||1)/2;
+let w2=(obj2.geometry.parameters.width||1)/2;
+let h2=(obj2.geometry.parameters.height||1)/2;
+let d2=(obj2.geometry.parameters.depth||1)/2;
+let dy=Math.abs((obj1.position.y+h1)-(obj2.position.y+h2));
+return dx<w1+w2 && dz<d1+d2 && dy<h1+h2;
+}
+
+function animate(){
+requestAnimationFrame(animate);
+spawnTimer++;
+if(spawnTimer>40){
+spawnObstacle();
+spawnEmerald();
+spawnRamp();
+spawnMovingBlock(); // NEW moving block
+spawnTimer=0;
+}
+
+// Boss trigger
+if(!bossActive && Math.random()<0.002){
+activateBoss();
+}
+if(bossActive){
+bossTimer--;
+if(bossTimer<=0) resetWorld();
+}
+
+// Boss hazards
+if(currentBoss==="volcano" && Math.random()<0.03){
+let lane=Math.floor(Math.random()*3);
+let fire=new THREE.Mesh(
+new THREE.SphereGeometry(0.3),
+new THREE.MeshLambertMaterial({color:0xff8800})
+);
+fire.position.set(lanes[lane],5,-60);
+scene.add(fire);
+fireballs.push(fire);
+}
+
+// Tsunami wall
+if(currentBoss==="tsunami"){
+if(Math.random()<0.01){
+let wall=new THREE.Mesh(
+new THREE.BoxGeometry(10,5,1),
+new THREE.MeshLambertMaterial({color:0x0099ff})
+);
+wall.position.set(0,2,-60);
+scene.add(wall);
+fireballs.push(wall);
+}
+}
+
+// Void spikes
+if(currentBoss==="void" && Math.random()<0.03){
+let lane=Math.floor(Math.random()*3);
+let spike=new THREE.Mesh(
+new THREE.ConeGeometry(0.3,1,4),
+new THREE.MeshLambertMaterial({color:0x9900ff})
+);
+spike.position.set(lanes[lane],0.5,-60);
+scene.add(spike);
+obstacles.push(spike);
+}
+
+// Blizzard snow particles
+if(currentBoss==="blizzard" && Math.random()<0.05){
+let snow=new THREE.Mesh(
+new THREE.SphereGeometry(0.05),
+new THREE.MeshLambertMaterial({color:0xffffff})
+);
+snow.position.set(Math.random()*6-3,5,-60);
+scene.add(snow);
+particles.push(snow);
+}
+
+// Movement
+player.position.x+=(targetX-player.position.x)*0.2;
+velocityY-=gravity;
+player.position.y+=velocityY;
+if(player.position.y<=0.5){
+player.position.y=0.5;
+velocityY=0;
+isJumping=false;
+}
+
+// Collisions - obstacles
+obstacles.forEach((obs,i)=>{
+obs.position.z+=speed;
+if(checkCollision(player,obs)) location.reload();
+if(obs.position.z>20){scene.remove(obs);obstacles.splice(i,1);score++;updateUI();}
+});
+
+// Collisions - moving blocks
+movingBlocks.forEach((m,i)=>{
+m.position.z+=speed;
+m.position.x+=m.userData.dirX;
+m.position.z+=m.userData.dirZ;
+if(m.position.x<-4||m.position.x>4) m.userData.dirX*=-1;
+if(m.position.z<-200||m.position.z>20) m.userData.dirZ*=-1;
+if(checkCollision(player,m)) location.reload();
+});
+
+// Collisions - fireballs & tsunami wall
+fireballs.forEach((f,i)=>{
+if(currentBoss==="volcano"){f.position.y-=0.15;}
+f.position.z+=speed;
+if(checkCollision(player,f)) location.reload();
+if(f.position.y<0){scene.remove(f);fireballs.splice(i,1);}
+});
+
+// Collisions - particles (snow)
+particles.forEach((p,i)=>{
+p.position.z+=speed;
+p.position.y-=0.02;
+if(p.position.y<0){scene.remove(p);particles.splice(i,1);}
+});
+
+// Collisions - emeralds
+emeralds.forEach((gem,i)=>{
+gem.position.z+=speed;
+if(checkCollision(player,gem)){
+emeraldCount++;
+scene.remove(gem);
+emeralds.splice(i,1);
+updateUI();
+}
+});
+
+// Sewer pit
+if(sewerPit){
+sewerPit.position.z+=speed;
+if(laneIndex===sewerPit.userData.lane && checkCollision(player,sewerPit)) location.reload();
+if(sewerPit.position.z>20){scene.remove(sewerPit); sewerPit=null;}
+}
+
+// Ramps
+ramps.forEach((r,i)=>{
+r.position.z+=speed;
+if(Math.abs(player.position.x-r.position.x)<1 && player.position.z-r.position.z>-2 && player.position.z-r.position.z<2 && player.position.y<1){
+player.position.y+=0.2; // ramp lift
+}
+if(r.position.z>20){scene.remove(r);ramps.splice(i,1);}
+});
+
+// Camera shake
+if(shake>0){camera.position.y+=Math.random()*0.2-0.1;shake--;}
+
+renderer.render(scene,camera);
+}
+
+function buildShop(){
+colorList.innerHTML="";
+colors.forEach(c=>{
+let btn=document.createElement("button");
+btn.className="colorBtn";
+btn.style.background="#"+c.hex.toString(16).padStart(6,"0");
+btn.innerText=ownedColors.includes(c.hex)?"Select":"Buy "+c.price+"💎";
+btn.onclick=()=>{
+if(!ownedColors.includes(c.hex)){
+if(emeraldCount>=c.price){emeraldCount-=c.price;ownedColors.push(c.hex);}
+}
+selectedColor=c.hex;
+player.material.color.setHex(c.hex);
+saveGame();
+buildShop();
+updateUI();
+};
+colorList.appendChild(btn);
+});
+}
+
+function saveGame(){
+localStorage.setItem("emeralds",emeraldCount);
+localStorage.setItem("ownedColors",JSON.stringify(ownedColors));
+localStorage.setItem("color",selectedColor);
+}
+
+function updateUI(){
+ui.innerText="Score: "+score+" | 💎 "+emeraldCount;
+}
+</script>
+</body>
+</html>
