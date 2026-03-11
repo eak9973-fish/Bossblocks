@@ -1,0 +1,13 @@
+{
+  "background_color": "#ffffff",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "BossBlocks",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "BossBlocks",
+  "start_url": "/ https://eak9973-fish.github.io/Bossblocks/",
+  "theme_color": "#ffffff",
+  "id": "69",
+  "description": "bossblocks is a fun game"
+}
