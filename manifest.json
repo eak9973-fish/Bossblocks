@@ -1,13 +1,24 @@
 {
-  "background_color": "#ffffff",
-  "dir": "ltr",
+  "name": "Bossblocks",
+  "short_name": "Bossblocks",
+  "description": "Bossblocks is a fun block based game where you challenge your skills at running.",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "name": "BossBlocks",
-  "orientation": "any",
-  "scope": "/",
-  "short_name": "BossBlocks",
-  "start_url": "/ https://eak9973-fish.github.io/Bossblocks/",
+  "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "id": "69",
-  "description": "bossblocks is a fun game"
+  "orientation": "any",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }
