@@ -2,7 +2,7 @@
   "name": "Bossblocks",
   "short_name": "Bossblocks",
   "description": "Bossblocks is a fun block based game where you challenge your skills at running.",
-  "start_url": "./",
+  "start_url": "./https://eak9973-fish.github.io/Bossblocks/",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
